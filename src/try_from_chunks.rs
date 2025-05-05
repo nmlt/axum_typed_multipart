@@ -216,6 +216,44 @@ where
         })
     }
 }
+#[cfg(feature = "chrono_0_4")]
+#[async_trait]
+impl<Err> TryFromChunks for chrono_0_4::NaiveDateTime
+where
+    Err: Into<anyhow::Error>,
+    chrono_0_4::NaiveDateTime: FromStr<Err = Err>,
+{
+    async fn try_from_chunks(
+        chunks: impl Stream<Item = Result<Bytes, TypedMultipartError>> + Send + Sync + Unpin,
+        metadata: FieldMetadata,
+    ) -> Result<Self, TypedMultipartError> {
+        let field_name = get_field_name(&metadata.name);
+        let bytes = Bytes::try_from_chunks(chunks, metadata).await?;
+        let body_str =
+            std::str::from_utf8(&bytes).map_err(|err| TypedMultipartError::WrongFieldType {
+                field_name: field_name.clone(),
+                wanted_type: type_name::<chrono_0_4::NaiveDateTime>().to_string(),
+                source: err.into(),
+            })?;
+        let result = match chrono_0_4::NaiveDateTime::from_str(body_str) {
+            Ok(dt) => Ok(dt),
+            Err(_) => chrono_0_4::NaiveDateTime::parse_from_str(body_str, "%Y-%m-%dT%H:%M"),
+        };
+        result.map_err(|err| TypedMultipartError::WrongFieldType {
+            field_name,
+            wanted_type: type_name::<chrono_0_4::NaiveDateTime>().to_string(),
+            source: err.into(),
+        })
+        // This does not work, because the FromStr error becomes something anyhow and doesn't have
+        // a `kind` method anymore. I couldn't get downcast to work.
+        // // Due to https://github.com/chronotope/chrono/issues/351 we can't match on `ParseError`
+        // if matches!(parse_error.kind(), chrono_0_4::format::ParseErrorKind::TooShort) {
+        //     chrono_0_4::NaiveDateTime::parse_from_str(body_str, "%Y-%m-%d %H:%M")
+        // } else {
+        //     Err::<chrono_0_4::NaiveDateTime, chrono_0_4::format::ParseError>(e)
+        // }
+    }
+}
 
 #[cfg(feature = "rust_decimal_1")]
 #[async_trait]
@@ -437,11 +475,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_try_from_chunks_chrono_native_date_fixed() {
+    async fn test_try_from_chunks_chrono_naive_date_fixed() {
         let valid_input = "2024-01-01";
         let valid_output = NaiveDate::from_str(valid_input).unwrap();
         test_try_from_chunks_valid::<NaiveDate>(valid_input, valid_output).await;
         test_try_from_chunks_invalid::<NaiveDate>("invalid").await;
+    }
+
+    #[tokio::test]
+    async fn test_try_from_chunks_chrono_naive_date_time_fixed() {
+        use chrono_0_4::NaiveDateTime;
+        let valid_input = "2025-05-05T11:11:00";
+        let valid_output = NaiveDateTime::from_str(valid_input).unwrap();
+        test_try_from_chunks_valid::<NaiveDateTime>(valid_input, valid_output).await;
+        test_try_from_chunks_invalid::<NaiveDateTime>("invalid").await;
     }
 
     #[tokio::test]
