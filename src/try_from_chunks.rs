@@ -71,9 +71,11 @@ impl TryFromChunks for String {
         let field_name = get_field_name(&metadata.name);
         let bytes = Bytes::try_from_chunks(chunks, metadata).await?;
 
+        let len = bytes.len();
         String::from_utf8(bytes.into()).map_err(|err| TypedMultipartError::WrongFieldType {
             field_name,
             wanted_type: type_name::<String>().to_string(),
+            field_len: len,
             source: err.into(),
         })
     }
@@ -91,10 +93,11 @@ macro_rules! gen_try_from_chunks_impl {
             ) -> Result<Self, TypedMultipartError> {
                 let field_name = get_field_name(&metadata.name);
                 let text = String::try_from_chunks(chunks, metadata).await?;
-
+                let len = text.len();
                 str::parse(&text).map_err(|err| TypedMultipartError::WrongFieldType {
                     field_name,
                     wanted_type: type_name::<$type>().to_string(),
+                    field_len: len,
                     source: anyhow::Error::new(err),
                 })
             }
@@ -151,9 +154,11 @@ impl TryFromChunks for uuid_1::Uuid {
     ) -> Result<Self, TypedMultipartError> {
         let field_name = get_field_name(&metadata.name);
         let bytes = Bytes::try_from_chunks(chunks, metadata).await?;
+        let field_len = bytes.len();
         uuid_1::Uuid::try_parse_ascii(&bytes).map_err(|err| TypedMultipartError::WrongFieldType {
             field_name,
             wanted_type: type_name::<uuid_1::Uuid>().to_string(),
+            field_len,
             source: err.into(),
         })
     }
@@ -173,16 +178,19 @@ where
     ) -> Result<Self, TypedMultipartError> {
         let field_name = get_field_name(&metadata.name);
         let bytes = Bytes::try_from_chunks(chunks, metadata).await?;
+        let field_len = bytes.len();
         let body_str =
             std::str::from_utf8(&bytes).map_err(|err| TypedMultipartError::WrongFieldType {
                 field_name: field_name.clone(),
                 wanted_type: type_name::<chrono_0_4::DateTime<Tz>>().to_string(),
+                field_len,
                 source: err.into(),
             })?;
         chrono_0_4::DateTime::<Tz>::from_str(body_str).map_err(|err| {
             TypedMultipartError::WrongFieldType {
                 field_name,
                 wanted_type: type_name::<chrono_0_4::DateTime<Tz>>().to_string(),
+                field_len,
                 source: err.into(),
             }
         })
@@ -201,16 +209,19 @@ where
     ) -> Result<Self, TypedMultipartError> {
         let field_name = get_field_name(&metadata.name);
         let bytes = Bytes::try_from_chunks(chunks, metadata).await?;
+        let field_len = bytes.len();
         let body_str =
             std::str::from_utf8(&bytes).map_err(|err| TypedMultipartError::WrongFieldType {
                 field_name: field_name.clone(),
                 wanted_type: type_name::<chrono_0_4::NaiveDate>().to_string(),
+                field_len,
                 source: err.into(),
             })?;
         chrono_0_4::NaiveDate::from_str(body_str).map_err(|err| {
             TypedMultipartError::WrongFieldType {
                 field_name,
                 wanted_type: type_name::<chrono_0_4::NaiveDate>().to_string(),
+                field_len,
                 source: err.into(),
             }
         })
@@ -229,10 +240,12 @@ where
     ) -> Result<Self, TypedMultipartError> {
         let field_name = get_field_name(&metadata.name);
         let bytes = Bytes::try_from_chunks(chunks, metadata).await?;
+        let field_len = bytes.len();
         let body_str =
             std::str::from_utf8(&bytes).map_err(|err| TypedMultipartError::WrongFieldType {
                 field_name: field_name.clone(),
                 wanted_type: type_name::<chrono_0_4::NaiveDateTime>().to_string(),
+                field_len,
                 source: err.into(),
             })?;
         let result = match chrono_0_4::NaiveDateTime::from_str(body_str) {
@@ -242,6 +255,7 @@ where
         result.map_err(|err| TypedMultipartError::WrongFieldType {
             field_name,
             wanted_type: type_name::<chrono_0_4::NaiveDateTime>().to_string(),
+            field_len,
             source: err.into(),
         })
         // This does not work, because the FromStr error becomes something anyhow and doesn't have
@@ -268,16 +282,19 @@ where
     ) -> Result<Self, TypedMultipartError> {
         let field_name = get_field_name(&metadata.name);
         let bytes = Bytes::try_from_chunks(chunks, metadata).await?;
+        let field_len = bytes.len();
         let body_str =
             std::str::from_utf8(&bytes).map_err(|err| TypedMultipartError::WrongFieldType {
                 field_name: field_name.clone(),
                 wanted_type: type_name::<rust_decimal_1::Decimal>().to_string(),
+                field_len,
                 source: err.into(),
             })?;
         rust_decimal_1::Decimal::from_str(body_str).map_err(|err| {
             TypedMultipartError::WrongFieldType {
                 field_name,
                 wanted_type: type_name::<rust_decimal_1::Decimal>().to_string(),
+                field_len,
                 source: err.into(),
             }
         })

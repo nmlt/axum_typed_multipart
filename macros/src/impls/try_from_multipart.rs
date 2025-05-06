@@ -96,16 +96,31 @@ pub fn macro_impl(input: TokenStream) -> TokenStream {
             let name = field.name(rename_all);
             let limit_bytes =
                 field.limit_bytes().map(|limit| quote! { Some(#limit) }).unwrap_or(quote! { None });
-            let value = quote! {
-                axum_typed_multipart::TryFromField::try_from_field(__field__, #limit_bytes).await?
-            };
 
             let assignment = if matches_vec_signature(ty) {
-                quote! { #ident.push(#value); }
+                quote! {
+                    let value = axum_typed_multipart::TryFromField::try_from_field(__field__, #limit_bytes).await?;
+                    #ident.push(value);
+                }
+            } else if matches_option_signature(ty) {
+                quote! {
+                    match axum_typed_multipart::TryFromField::try_from_field(__field__, #limit_bytes).await {
+                        Ok(value) => #ident = Some(value),
+                        Err(axum_typed_multipart::TypedMultipartError::WrongFieldType { field_name, wanted_type, field_len, source }) => {
+                            if field_len == 0 {
+                                #ident = None;
+                            } else {
+                                return Err(axum_typed_multipart::TypedMultipartError::WrongFieldType { field_name, wanted_type, field_len, source });
+                            }
+                        },
+                        Err(e) => return Err(e),
+                    }
+                }
             } else if strict {
                 quote! {
+                    let value = axum_typed_multipart::TryFromField::try_from_field(__field__, #limit_bytes).await?;
                     if #ident.is_none() {
-                        #ident = Some(#value);
+                        #ident = Some(value);
                     } else {
                         return Err(
                             axum_typed_multipart::TypedMultipartError::DuplicateField {
@@ -115,7 +130,10 @@ pub fn macro_impl(input: TokenStream) -> TokenStream {
                     }
                 }
             } else {
-                quote! { #ident = Some(#value); }
+                quote! {
+                    let value = axum_typed_multipart::TryFromField::try_from_field(__field__, #limit_bytes).await?;
+                    #ident = Some(value);
+                }
             };
 
             quote! {

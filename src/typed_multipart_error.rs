@@ -21,8 +21,13 @@ pub enum TypedMultipartError {
     #[error("field '{field_name}' is required")]
     MissingField { field_name: String },
 
-    #[error("field '{field_name}' must be of type '{wanted_type}': {source}")]
-    WrongFieldType { field_name: String, wanted_type: String, source: anyhow::Error },
+    #[error("field '{field_name}' must be of type '{wanted_type}' (field length: {field_len}): {source}")]
+    WrongFieldType {
+        field_name: String,
+        wanted_type: String,
+        field_len: usize,
+        source: anyhow::Error,
+    },
 
     #[error("field '{field_name}' is already present")]
     DuplicateField { field_name: String },
@@ -130,9 +135,13 @@ mod tests {
         let field_name = "data".to_string();
         let wanted_type = "bar".to_string();
         let source = anyhow::anyhow!("invalid type");
-        let error = TypedMultipartError::WrongFieldType { field_name, wanted_type, source };
+        let error =
+            TypedMultipartError::WrongFieldType { field_name, wanted_type, field_len: 3, source };
         assert_eq!(error.get_status(), StatusCode::BAD_REQUEST);
-        assert_eq!(error.to_string(), "field 'data' must be of type 'bar': invalid type");
+        assert_eq!(
+            error.to_string(),
+            "field 'data' must be of type 'bar' (field length: 3): invalid type"
+        );
     }
 
     #[tokio::test]
