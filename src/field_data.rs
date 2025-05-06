@@ -81,10 +81,10 @@ impl<T: TryFromField> TryFromField for FieldData<T> {
     async fn try_from_field(
         field: Field<'_>,
         limit_bytes: Option<usize>,
-    ) -> Result<(Self, usize), TypedMultipartError> {
+    ) -> Result<Self, TypedMultipartError> {
         let metadata = FieldMetadata::from(&field);
-        let (contents, size) = T::try_from_field(field, limit_bytes).await?;
-        Ok((Self { metadata, contents }, size))
+        let contents = T::try_from_field(field, limit_bytes).await?;
+        Ok(Self { metadata, contents })
     }
 }
 
@@ -106,10 +106,10 @@ mod tests {
             let field = multipart.next_field().await.unwrap().unwrap();
             let field_data = FieldData::<String>::try_from_field(field, None).await.unwrap();
 
-            assert_eq!(field_data.0.metadata.name.unwrap(), "input_file");
-            assert_eq!(field_data.0.metadata.file_name.unwrap(), "test.txt");
-            assert_eq!(field_data.0.metadata.content_type.unwrap(), "text/plain");
-            assert_eq!(field_data.0.contents, "test");
+            assert_eq!(field_data.metadata.name.unwrap(), "input_file");
+            assert_eq!(field_data.metadata.file_name.unwrap(), "test.txt");
+            assert_eq!(field_data.metadata.content_type.unwrap(), "text/plain");
+            assert_eq!(field_data.contents, "test");
         };
 
         let part = Part::text("test").file_name("test.txt").mime_str("text/plain").unwrap();

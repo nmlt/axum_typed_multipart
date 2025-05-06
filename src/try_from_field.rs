@@ -23,7 +23,7 @@ pub trait TryFromField: Sized {
     async fn try_from_field(
         field: Field<'_>,
         limit_bytes: Option<usize>,
-    ) -> Result<(Self, usize), TypedMultipartError>;
+    ) -> Result<Self, TypedMultipartError>;
 }
 
 #[async_trait]
@@ -34,7 +34,7 @@ where
     async fn try_from_field(
         field: Field<'_>,
         limit_bytes: Option<usize>,
-    ) -> Result<(Self, usize), TypedMultipartError> {
+    ) -> Result<Self, TypedMultipartError> {
         let metadata = FieldMetadata::from(&field);
         let mut field_name = metadata.name.clone().unwrap_or(String::new());
         let mut size_bytes = 0;
@@ -56,7 +56,7 @@ where
             chunk
         });
 
-        T::try_from_chunks(chunks, metadata).await.map(|res| (res, size_bytes))
+        T::try_from_chunks(chunks, metadata).await
     }
 }
 
@@ -93,7 +93,7 @@ mod tests {
     {
         let handler = |mut multipart: Multipart| async move {
             let field = multipart.next_field().await.unwrap().unwrap();
-            let res = Data::try_from_field(field, Some(512)).await.map(|(res, _)| res);
+            let res = Data::try_from_field(field, Some(512)).await;
             validator(res);
         };
 

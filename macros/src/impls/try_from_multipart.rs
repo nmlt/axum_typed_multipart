@@ -96,17 +96,16 @@ pub fn macro_impl(input: TokenStream) -> TokenStream {
             let name = field.name(rename_all);
             let limit_bytes =
                 field.limit_bytes().map(|limit| quote! { Some(#limit) }).unwrap_or(quote! { None });
+            let value = quote! {
+                axum_typed_multipart::TryFromField::try_from_field(__field__, #limit_bytes).await?
+            };
 
             let assignment = if matches_vec_signature(ty) {
-                quote! {
-                    let (value, _size_bytes) = axum_typed_multipart::TryFromField::try_from_field(__field__, #limit_bytes).await?;
-                    #ident.push(value);
-                }
+                quote! { #ident.push(#value); }
             } else if strict {
                 quote! {
-                    let (value, size_bytes) = axum_typed_multipart::TryFromField::try_from_field(__field__, #limit_bytes).await?;
                     if #ident.is_none() {
-                        #ident = Some(value);
+                        #ident = Some(#value);
                     } else {
                         return Err(
                             axum_typed_multipart::TypedMultipartError::DuplicateField {
@@ -115,20 +114,8 @@ pub fn macro_impl(input: TokenStream) -> TokenStream {
                         );
                     }
                 }
-            } else if matches_option_signature(ty) {
-                quote! {
-                    let (value, size_bytes) = axum_typed_multipart::TryFromField::try_from_field(__field__, #limit_bytes).await?;
-                    if size_bytes == 0 {
-                        #ident = None;
-                    } else {
-                        #ident = Some(value);
-                    }
-                }
             } else {
-                quote! {
-                    let (value, _size_bytes) = axum_typed_multipart::TryFromField::try_from_field(__field__, #limit_bytes).await?;
-                    #ident = Some(value);
-                }
+                quote! { #ident = Some(#value); }
             };
 
             quote! {

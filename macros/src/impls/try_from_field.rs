@@ -58,7 +58,7 @@ pub fn macro_impl(input: TokenStream) -> TokenStream {
         let f_ident = &f.ident;
         let strlit = Lit::Str(LitStr::new(&name, f_ident.span()));
         quote! {
-            #strlit => Ok((Self::#f_ident, size))
+            #strlit => Ok(Self::#f_ident)
         }
     });
 
@@ -68,8 +68,8 @@ pub fn macro_impl(input: TokenStream) -> TokenStream {
             async fn try_from_field(
                 field: ::axum::extract::multipart::Field<'_>,
                 limit_bytes: ::core::option::Option<usize>,
-            ) -> ::core::result::Result<(Self, usize), ::axum_typed_multipart::TypedMultipartError> {
-                let (string, size): (String, usize) = ::axum_typed_multipart::TryFromField::try_from_field(field, limit_bytes).await?;
+            ) -> ::core::result::Result<Self, ::axum_typed_multipart::TypedMultipartError> {
+                let string: String = ::axum_typed_multipart::TryFromField::try_from_field(field, limit_bytes).await?;
                 match string.as_str() {
                     #(#match_arms),*,
                     _ => Err(::axum_typed_multipart::TypedMultipartError::UnknownField {
