@@ -20,9 +20,14 @@ async fn test_multipart(multipart: TypedMultipart<MultipartData>) -> StatusCode 
     StatusCode::OK
 }
 
+pub fn app() -> Router {
+    Router::new().route("/", post(test_multipart))
+}
+
 #[tokio::main]
 async fn main() {
-    let app = Router::new().route("/", post(test_multipart)).into_make_service();
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let port = std::env::var("PORT").unwrap_or("0".into());
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await.unwrap();
+    println!("Listening on http://{}", listener.local_addr().unwrap());
+    axum::serve(listener, app()).await.unwrap();
 }

@@ -1,6 +1,4 @@
-//! Designed to seamlessly integrate with [Axum](https://github.com/tokio-rs/axum), this crate
-//! simplifies the process of handling `multipart/form-data` requests in your web application by
-//! allowing you to parse the request body into a type-safe struct.
+//! Type-safe `multipart/form-data` handling for [Axum](https://github.com/tokio-rs/axum).
 //!
 //! ## Installation
 //!
@@ -38,8 +36,10 @@
 //! - [String]
 //! - [axum::body::Bytes]
 //! - [chrono::DateTime](chrono_0_4::DateTime) (feature: `chrono_0_4`)
+//! - [chrono::NaiveDate](chrono_0_4::NaiveDate) (feature: `chrono_0_4`)
 //! - [tempfile::NamedTempFile](tempfile_3::NamedTempFile) (feature: `tempfile_3`)
 //! - [uuid::Uuid](uuid_1::Uuid) (feature: `uuid_1`)
+//! - [rust_decimal::Decimal](rust_decimal_1::Decimal) (feature: `rust_decimal_1`)
 //!
 //! If the request body is malformed the request will be aborted with an error.
 //!
@@ -89,7 +89,7 @@
 //! - `UPPERCASE`
 //! - `lowercase`
 //!
-//!  ```rust
+//! ```rust
 //! use axum_typed_multipart::TryFromMultipart;
 //!
 //! #[derive(TryFromMultipart)]
@@ -130,6 +130,23 @@
 //! }
 //! ```
 //!
+//! ### Field size limits
+//!
+//! By default, there are no size limits on individual fields. You can set a limit using the
+//! `limit` parameter of the `form_data` attribute. The limit accepts human-readable byte units
+//! (e.g., `"1MB"`, `"512KB"`, `"1GiB"`) or `"unlimited"` to explicitly disable limits.
+//! ```rust
+//! use axum_typed_multipart::TryFromMultipart;
+//!
+//! #[derive(TryFromMultipart)]
+//! struct RequestData {
+//!     #[form_data(limit = "1MB")]
+//!     small_file: Vec<u8>,
+//!     #[form_data(limit = "unlimited")]
+//!     large_file: Vec<u8>,
+//! }
+//! ```
+//!
 //! ### Large uploads
 //!
 //! For large uploads you can save the contents of the field to the file system using
@@ -138,15 +155,9 @@
 //! upload is complete, you can then save the contents to a location of your choice. For more
 //! information check out the [NamedTempFile](tempfile_3::NamedTempFile) documentation.
 //!
-//! #### **Warning**
-//! Field size limits for [Vec] fields are applied to **each** occurrence of the field. This means
-//! that if you have a 1GiB field limit and the field contains
-//! 5 entries, the total size of the request body will be 5GiB.
-//!
 //! #### **Note**
 //! When handling large uploads you will need to increase the request body size limit using the
-//! [DefaultBodyLimit](axum::extract::DefaultBodyLimit) middleware. Field size limits are disabled by default,
-//! but can be enabled using the `limit` parameter of the `form_data` attribute if desired.
+//! [DefaultBodyLimit](axum::extract::DefaultBodyLimit) middleware.
 //! ```rust,no_run
 #![doc = include_str!("../examples/upload.rs")]
 //! ```
@@ -158,8 +169,8 @@
 //!
 //! #### **Warning**
 //! Field size limits for [Vec] fields are applied to **each** occurrence of the field. This means
-//! that if you have a 1GiB field limit and the field contains
-//! 5 entries, the total size of the request body will be 5GiB.
+//! that if you have a 1GiB field limit and the field contains 5 entries, the total size of the
+//! request body will be 5GiB.
 //! ```rust
 //! use axum::http::StatusCode;
 //! use axum_typed_multipart::{TryFromMultipart, TypedMultipart};
@@ -213,7 +224,7 @@
 //!
 //! #[derive(TryFromField)]
 //! // Using the `#[try_from_field(rename_all = "...")]` renaming attribute.
-//! // It works the same as way as the `TryFromMultipart` implementation.
+//! // Works the same way as the `TryFromMultipart` implementation.
 //! #[try_from_field(rename_all = "snake_case")]
 //! enum AccountType {
 //!     // Or using the `#[field(rename = "...")]` attribute.
@@ -230,20 +241,16 @@
 //! [TryFromField](crate::TryFromField) trait for your type. This will allow the derive macro to
 //! generate the [TryFromMultipart](crate::TryFromMultipart) implementation automatically. Instead
 //! of implementing the trait directly, it is recommended to implement the
-//! [TryFromChunks](TryFromChunks) trait and the [TryFromField](crate::TryFromField) trait
-//! will be implemented automatically. This is recommended since you won't need to manually
-//! implement the size limit logic.
+//! [TryFromChunks](TryFromChunks) trait, which will automatically provide a [TryFromField](crate::TryFromField)
+//! implementation with proper size limit handling.
 //!
 //! To implement the [TryFromChunks](TryFromChunks) trait for external types you will need
 //! to create a newtype wrapper and implement the trait for the wrapper.
 //!
 //! ### Custom error format
 //!
-//! When using [TypedMultipart](TypedMultipart) as an argument for your handlers, when the
-//! request is malformed, the error will be serialized as a string. If you would like to customize
-//! the error format you can use the [BaseMultipart](BaseMultipart) struct instead. This
-//! struct is used internally by [TypedMultipart](TypedMultipart) and it can be used to
-//! customize the error type.
+//! When using [TypedMultipart](TypedMultipart) as an argument for your handlers, errors are
+//! serialized as strings. To customize the error format, use [BaseMultipart](BaseMultipart) instead.
 //!
 //! To customize the error you will need to define a custom error type and implement
 //! [IntoResponse](axum::response::IntoResponse) and `From<TypedMultipartError>`.
@@ -251,28 +258,33 @@
 #![doc = include_str!("../examples/custom_error.rs")]
 //! ```
 //!
+//! ### Injecting state into the parser
+//!
+//! Sometimes you may need to access application state during field parsing. This is supported
+//! through the [TryFromFieldWithState](crate::TryFromFieldWithState) trait.
+//! ```rust,no_run
+#![doc = include_str!("../examples/state.rs")]
+//! ```
+//!
 //! ### Usage with utoipa
 //!
-//! If you would like to use `axum_typed_multipart` as part of a documented API then
-//! [`utoipa`](https://github.com/juhaku/utoipa) can provide a simple way to add documentation to
-//! an API and automatically generate `openapi.json` specifications. `axum_typed_multipart` can
-//! be used in conjunction with `utoipa` easily. An example implementation is included.
+//! [`utoipa`](https://github.com/juhaku/utoipa) can be used to add documentation and automatically
+//! generate `openapi.json` specifications. See the [utoipa example](https://github.com/murar8/axum_typed_multipart/tree/main/examples/utoipa.rs)
+//! for integration details.
 //!
-//! Note: File uploads in `utoipa` require a type of `Vec<u8>` which is incompatible with
-//! `axum_typed_multipart` which uses either `Bytes` or [tempfile::NamedTempFile](tempfile_3::NamedTempFile)
-//! as above. It is possible to get the best of both worlds as shown in the example.
-//!
-//! The example can be found in the [example directory](https://github.com/murar8/axum_typed_multipart/tree/main/examples/utoipa.rs).
+//! Note: File uploads in `utoipa` require `Vec<u8>` which differs from this crate's `Bytes` or
+//! [tempfile::NamedTempFile](tempfile_3::NamedTempFile). The example shows how to handle this.
 //!
 //! ### Validation
 //!
-//! In order to perform validation on the various attributes of a field, I would recommend using
-//! the [validator](https://crates.io/crates/validator) crate together with the
-//! [axum-valid](https://crates.io/crates/axum-valid) crate. A nice example can be found at
-//! [docs.rs](https://docs.rs/axum-valid/0.19.0/axum_valid/#-validatede-modifiede-validifiede-and-validifiedbyrefe).
+//! For field validation, consider using the [validator](https://crates.io/crates/validator) crate
+//! with [axum-valid](https://crates.io/crates/axum-valid). See the
+//! [axum-valid docs](https://docs.rs/axum-valid/0.19.0/axum_valid/#-validatede-modifiede-validifiede-and-validifiedbyrefe)
+//! for examples.
 
 #![cfg_attr(all(coverage_nightly, test), feature(coverage_attribute))]
 
+pub use anyhow;
 pub use async_trait::async_trait;
 pub use axum_typed_multipart_macros::{TryFromField, TryFromMultipart};
 
@@ -284,10 +296,12 @@ mod try_from_multipart;
 mod typed_multipart;
 mod typed_multipart_error;
 
+pub(crate) mod util;
+
 pub use crate::base_multipart::BaseMultipart;
 pub use crate::field_data::{FieldData, FieldMetadata};
 pub use crate::try_from_chunks::TryFromChunks;
-pub use crate::try_from_field::TryFromField;
-pub use crate::try_from_multipart::TryFromMultipart;
+pub use crate::try_from_field::{TryFromField, TryFromFieldWithState};
+pub use crate::try_from_multipart::{TryFromMultipart, TryFromMultipartWithState};
 pub use crate::typed_multipart::TypedMultipart;
 pub use crate::typed_multipart_error::TypedMultipartError;

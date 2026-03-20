@@ -1,4 +1,4 @@
-use crate::{FieldMetadata, TypedMultipartError};
+use crate::{util, FieldMetadata, TypedMultipartError};
 use async_trait::async_trait;
 use axum::body::Bytes;
 use bytes::BytesMut;
@@ -16,9 +16,8 @@ use std::str::FromStr;
 /// ## Example
 ///
 /// ```rust
-/// use axum_typed_multipart::async_trait;
 /// use axum::body::Bytes;
-/// use axum_typed_multipart::{FieldMetadata, TryFromChunks, TypedMultipartError};
+/// use axum_typed_multipart::{async_trait, FieldMetadata, TryFromChunks, TypedMultipartError};
 /// use futures_util::stream::Stream;
 ///
 /// struct Data(String);
@@ -79,6 +78,23 @@ impl TryFromChunks for String {
     }
 }
 
+#[async_trait]
+impl TryFromChunks for bool {
+    async fn try_from_chunks(
+        chunks: impl Stream<Item = Result<Bytes, TypedMultipartError>> + Send + Sync + Unpin,
+        metadata: FieldMetadata,
+    ) -> Result<Self, TypedMultipartError> {
+        let field_name = get_field_name(&metadata.name);
+        let str = String::try_from_chunks(chunks, metadata).await?;
+
+        util::str_to_bool(str).ok_or(TypedMultipartError::WrongFieldType {
+            field_name,
+            wanted_type: type_name::<bool>().to_string(),
+            source: anyhow::anyhow!("Invalid boolean value"),
+        })
+    }
+}
+
 /// Generate a [TryFromChunks] implementation for the supplied data type using
 /// the `str::parse` method on the textual representation of the field data.
 macro_rules! gen_try_from_chunks_impl {
@@ -116,7 +132,6 @@ gen_try_from_chunks_impl!(u128);
 gen_try_from_chunks_impl!(usize);
 gen_try_from_chunks_impl!(f32);
 gen_try_from_chunks_impl!(f64);
-gen_try_from_chunks_impl!(bool); // TODO?: Consider accepting any thruthy value.
 gen_try_from_chunks_impl!(char);
 
 #[cfg(feature = "tempfile_3")]
@@ -285,8 +300,7 @@ where
 }
 
 fn get_field_name(name: &Option<String>) -> String {
-    // Theoretically, the name should always be present, but it's better to be
-    // safe than sorry.
+    // Name should always be present, but handle the edge case.
     name.clone().unwrap_or("<unknown>".into())
 }
 

@@ -6,24 +6,50 @@ use futures_util::stream::StreamExt;
 use futures_util::TryStreamExt;
 use std::mem;
 
-/// Types that can be created from an instance of [Field].
+/// Types that can be created from a multipart field.
 ///
-/// All fields for a given struct must implement this trait to be able to derive
-/// the [TryFromMultipart](crate::TryFromMultipart) trait.
+/// Required for all fields in structs deriving [TryFromMultipart](crate::TryFromMultipart).
 ///
-/// Implementing this trait directly is not recommended since it requires the
-/// user to manually implement the size limit logic. Instead, implement the
-/// [TryFromChunks] trait and this trait will be implemented automatically.
+/// **Note:** Prefer implementing [TryFromChunks] instead, which automatically provides
+/// this implementation with proper size limit handling.
 #[async_trait]
 pub trait TryFromField: Sized {
-    /// Consume the input [Field] to create the supplied type.
-    ///
-    /// The `limit_bytes` parameter is used to limit the size of the field. If
-    /// the field is larger than the limit, an error is returned.
+    /// Creates an instance from a multipart field with optional size limit.
     async fn try_from_field(
         field: Field<'_>,
         limit_bytes: Option<usize>,
     ) -> Result<Self, TypedMultipartError>;
+}
+
+/// Stateful variant of [TryFromField] that provides access to application state during parsing.
+///
+/// ## Example
+///
+/// ```rust,no_run
+#[doc = include_str!("../examples/state.rs")]
+/// ```
+#[async_trait]
+pub trait TryFromFieldWithState<S>: Sized {
+    /// Creates an instance from a field with access to application state.
+    async fn try_from_field_with_state(
+        field: Field<'_>,
+        limit_bytes: Option<usize>,
+        state: &S,
+    ) -> Result<Self, TypedMultipartError>;
+}
+
+#[async_trait]
+impl<T, S> TryFromFieldWithState<S> for T
+where
+    T: TryFromField,
+{
+    async fn try_from_field_with_state(
+        field: Field<'_>,
+        limit_bytes: Option<usize>,
+        _state: &S,
+    ) -> Result<Self, TypedMultipartError> {
+        T::try_from_field(field, limit_bytes).await
+    }
 }
 
 #[async_trait]
@@ -100,7 +126,9 @@ mod tests {
         TestClient::new(Router::new().route("/", post(handler)))
             .post("/")
             .multipart(Form::new().text("data", input))
-            .await;
+            .send()
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -117,5 +145,49 @@ mod tests {
             assert!(matches!(res, Err(TypedMultipartError::FieldTooLarge { .. })));
         };
         test_try_from_field("x".repeat(513), validator).await;
+    }
+}
+
+#[cfg(test)]
+#[cfg_attr(all(coverage_nightly, test), coverage(off))]
+mod tests_with_state {
+    use super::*;
+    use axum::extract::Multipart;
+    use axum::routing::post;
+    use axum::Router;
+    use axum_test_helper::TestClient;
+    use reqwest::multipart::Form;
+
+    #[derive(Clone)]
+    struct State(String);
+
+    struct DataWithState(String);
+
+    #[async_trait]
+    impl TryFromFieldWithState<State> for DataWithState {
+        async fn try_from_field_with_state(
+            field: Field<'_>,
+            limit_bytes: Option<usize>,
+            state: &State,
+        ) -> Result<Self, TypedMultipartError> {
+            let data = String::try_from_field(field, limit_bytes).await?;
+            Ok(Self(format!("{}, {}", state.0, data)))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_try_from_field_with_state() {
+        let handler = |mut multipart: Multipart| async move {
+            let field = multipart.next_field().await.unwrap().unwrap();
+            let state = State("Hello".to_string());
+            let res = DataWithState::try_from_field_with_state(field, Some(512), &state).await;
+            assert_eq!(res.unwrap().0, "Hello, world!");
+        };
+        TestClient::new(Router::new().route("/", post(handler)))
+            .post("/")
+            .multipart(Form::new().text("data", "world!"))
+            .send()
+            .await
+            .unwrap();
     }
 }

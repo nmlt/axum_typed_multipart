@@ -1,9 +1,10 @@
 //! Macros for axum-typed-multipart.
 
-#![cfg_attr(all(coverage_nightly, test), feature(coverage_attribute))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 mod case_conversion;
 mod impls;
+mod limit_bytes;
 mod util;
 
 use proc_macro::TokenStream;

@@ -2,7 +2,7 @@ use axum::extract::multipart::{MultipartError, MultipartRejection};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 
-/// Error type for the [TryFromMultipart](crate::TryFromMultipart) trait.
+/// Error type for multipart parsing operations.
 #[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum TypedMultipartError {
@@ -30,6 +30,9 @@ pub enum TypedMultipartError {
     #[error("field '{field_name}' is not expected")]
     UnknownField { field_name: String },
 
+    #[error("'{value}' is not a valid value for field '{field_name}'")]
+    InvalidEnumValue { field_name: String, value: String },
+
     #[error("field name is empty")]
     NamelessField,
 
@@ -50,6 +53,7 @@ impl TypedMultipartError {
             | Self::WrongFieldType { .. }
             | Self::DuplicateField { .. }
             | Self::UnknownField { .. }
+            | Self::InvalidEnumValue { .. }
             | Self::NamelessField { .. } => StatusCode::BAD_REQUEST,
             | Self::FieldTooLarge { .. } => StatusCode::PAYLOAD_TOO_LARGE,
             | Self::InvalidRequest { source } => source.status(),
@@ -99,9 +103,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_request() {
-        let res = create_client().await.post("/").json(&"{}").await;
+        let res = create_client().await.post("/").json(&"{}").send().await.unwrap();
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-        assert!(res.text().await.contains("request is malformed"));
+        assert!(res.text().await.unwrap().contains("request is malformed"));
     }
 
     #[tokio::test]
@@ -111,10 +115,12 @@ mod tests {
             .post("/")
             .header(header::CONTENT_TYPE.as_str(), "multipart/form-data; boundary=BOUNDARY")
             .body("BOUNDARY\r\n\r\nBOUNDARY--\r\n")
-            .await;
+            .send()
+            .await
+            .unwrap();
 
         assert_eq!(res.status(), StatusCode::BAD_REQUEST);
-        assert!(res.text().await.contains("request body is malformed"));
+        assert!(res.text().await.unwrap().contains("request body is malformed"));
     }
 
     #[tokio::test]
@@ -149,6 +155,15 @@ mod tests {
         let error = TypedMultipartError::UnknownField { field_name };
         assert_eq!(error.get_status(), StatusCode::BAD_REQUEST);
         assert_eq!(error.to_string(), "field 'data' is not expected");
+    }
+
+    #[tokio::test]
+    async fn test_invalid_enum_value() {
+        let field_name = "status".to_string();
+        let value = "invalid".to_string();
+        let error = TypedMultipartError::InvalidEnumValue { field_name, value };
+        assert_eq!(error.get_status(), StatusCode::BAD_REQUEST);
+        assert_eq!(error.to_string(), "'invalid' is not a valid value for field 'status'");
     }
 
     #[tokio::test]
